@@ -1,83 +1,107 @@
 import pandas as pd
+import argparse
+from pathlib import Path
 
 INPUT_FILE = "clienti-origine-ita.csv"
 OUTPUT_FILE = "clienti_shopify-ita.csv"
 
-df = pd.read_csv(INPUT_FILE)
+NEWSLETTER_COL = "Iscrizione alla Newsletter e Autorizzazioni di Marketing"
 
-out = pd.DataFrame()
 
-# -----------------------------
-# UTIL
-# -----------------------------
-def clean_and_capitalize(val):
-    """
-    - NaN / vuoto -> ""
-    - normalizza spazi
-    - capitalizza ogni parola
-    """
-    if pd.isna(val):
+def get_column_or_default(dataframe, column_name, default_value=""):
+    if column_name in dataframe.columns:
+        return dataframe[column_name]
+    return pd.Series([default_value] * len(dataframe), index=dataframe.index, dtype="string")
+
+
+def clean_text(value):
+    if pd.isna(value):
         return ""
-    val = str(val).strip()
-    if val == "" or val.lower() == "nan":
-        return ""
-    return val.title()
+    value = str(value).strip()
+    return "" if value.lower() == "nan" else value
 
-def normalize_country(c):
-    if pd.isna(c):
-        return "IT"
-    c = str(c).strip()
-    return "IT" if c == "" else c.upper()
 
-def clean_date(d):
-    if pd.isna(d):
-        return ""
-    d = str(d).strip()
-    return "" if d in ("", "0000-00-00") else d
+def clean_country(value):
+    value = clean_text(value).upper()
+    return value if value else "IT"
 
-def clean_phone(p):
-    """
-    - NaN / vuoto -> ""
-    - strip spazi
-    - mantiene il numero così com'è (Shopify accetta +39 ecc.)
-    """
-    if pd.isna(p):
-        return ""
-    p = str(p).strip()
-    return "" if p.lower() == "nan" else p
 
-# -----------------------------
-# MAPPING BASE
-# -----------------------------
-out["Email"] = df["Indirizzo Email"].astype(str).str.strip()
-out["First Name"] = df["Nome"].apply(clean_and_capitalize)
-out["Last Name"] = df["Cognome"].apply(clean_and_capitalize)
+def newsletter_to_yes_no(value):
+    return "yes" if clean_text(value) else "no"
 
-# -----------------------------
-# PHONE
-# -----------------------------
-out["Phone"] = df["Telefono Cellulare"].apply(clean_phone)
 
-# -----------------------------
-# EMAIL MARKETING
-# -----------------------------
-out["Accepts Email Marketing"] = "yes"
+EXPECTED_COLUMNS = [
+    "First Name",
+    "Last Name",
+    "Email",
+    "Accepts Email Marketing",
+    "Default Address Company",
+    "Default Address Address1",
+    "Default Address Address2",
+    "Default Address City",
+    "Default Address Province Code",
+    "Default Address Country Code",
+    "Default Address Zip",
+    "Default Address Phone",
+    "Phone",
+    "Accepts SMS Marketing",
+    "Tags",
+    "Note",
+    "Tax Exempt",
+]
 
-# -----------------------------
-# COUNTRY
-# -----------------------------
-out["Default Address Country Code"] = df["Country"].apply(normalize_country)
 
-# -----------------------------
-# TAG ITA / ENG
-# -----------------------------
-out["Tags"] = out["Default Address Country Code"].apply(
-    lambda c: "ITA" if c == "IT" else "ENG"
-)
+def build_shopify_dataframe(df):
+    out = pd.DataFrame()
+    out["First Name"] = get_column_or_default(df, "Nome").apply(clean_text)
+    out["Last Name"] = get_column_or_default(df, "Cognome").apply(clean_text)
+    out["Email"] = get_column_or_default(df, "Indirizzo Email").apply(clean_text)
+    out["Accepts Email Marketing"] = get_column_or_default(df, NEWSLETTER_COL).apply(newsletter_to_yes_no)
 
-# -----------------------------
-# EXPORT
-# -----------------------------
-out.to_csv(OUTPUT_FILE, index=False)
+    out["Default Address Company"] = ""
+    out["Default Address Address1"] = get_column_or_default(df, "Indirizzo").apply(clean_text)
+    out["Default Address Address2"] = ""
+    out["Default Address City"] = ""
+    out["Default Address Province Code"] = get_column_or_default(df, "REGION").apply(lambda v: clean_text(v).upper())
+    out["Default Address Country Code"] = get_column_or_default(df, "CC").apply(clean_country)
+    out["Default Address Zip"] = ""
+    out["Default Address Phone"] = get_column_or_default(df, "Telefono Cellulare").apply(clean_text)
+    out["Phone"] = ""
 
-print(f"✅ CSV Shopify creato correttamente: {OUTPUT_FILE}")
+    out["Accepts SMS Marketing"] = "no"
+    out["Tags"] = out["Default Address Country Code"].apply(lambda c: "ITA" if c == "IT" else "ENG")
+    out["Note"] = ""
+    out["Tax Exempt"] = "no"
+    return out[EXPECTED_COLUMNS]
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Converte CSV clienti in formato Shopify.")
+    parser.add_argument("-i", "--input", default=INPUT_FILE, help="Percorso CSV input.")
+    parser.add_argument("-o", "--output", default=OUTPUT_FILE, help="Percorso CSV output.")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    input_path = Path(args.input)
+    if input_path.suffix.lower() != ".csv":
+        raise SystemExit(
+            f"❌ File input non valido: {args.input}\n"
+            "Usa un file .csv, ad esempio:\n"
+            "python importa-utenti.py -i clienti-origine-ita.csv -o clienti_shopify-ita.csv"
+        )
+    if not input_path.exists():
+        raise SystemExit(
+            f"❌ File non trovato: {args.input}\n"
+            "Verifica il percorso o usa -i con il file CSV corretto."
+        )
+
+    df = pd.read_csv(args.input, dtype=str, keep_default_na=False)
+    out = build_shopify_dataframe(df)
+    out.to_csv(args.output, index=False)
+    print(f"✅ CSV Shopify creato correttamente: {args.output}")
+
+
+if __name__ == "__main__":
+    main()
