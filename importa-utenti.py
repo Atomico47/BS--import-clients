@@ -61,7 +61,10 @@ out["Phone"] = df["Telefono Cellulare"].apply(clean_phone)
 # -----------------------------
 # EMAIL MARKETING
 # -----------------------------
-out["Accepts Email Marketing"] = "yes"
+newsletter_col = "Iscrizione alla Newsletter e Autorizzazioni di Marketing"
+out["Accepts Email Marketing"] = df[newsletter_col].apply(
+    lambda v: "true" if (not pd.isna(v) and str(v).strip() != "") else "false"
+)
 
 # -----------------------------
 # COUNTRY
