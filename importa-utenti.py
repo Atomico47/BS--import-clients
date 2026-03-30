@@ -3,7 +3,7 @@ import pandas as pd
 INPUT_FILE = "clienti-origine-ita.csv"
 OUTPUT_FILE = "clienti_shopify-ita.csv"
 
-df = pd.read_csv(INPUT_FILE)
+df = pd.read_csv(INPUT_FILE, dtype=str, keep_default_na=False)
 
 out = pd.DataFrame()
 
@@ -56,7 +56,12 @@ def choose_country_series(dataframe):
         return dataframe["CC"]
     if "Country" in dataframe.columns:
         return dataframe["Country"]
-    return pd.Series([""] * len(dataframe))
+    return pd.Series([""] * len(dataframe), index=dataframe.index, dtype="string")
+
+def get_column_or_default(dataframe, column_name, default_value=""):
+    if column_name in dataframe.columns:
+        return dataframe[column_name]
+    return pd.Series([default_value] * len(dataframe), index=dataframe.index, dtype="string")
 
 # -----------------------------
 # MAPPING BASE
@@ -74,7 +79,8 @@ out["Phone"] = df["Telefono Cellulare"].apply(clean_phone)
 # EMAIL MARKETING
 # -----------------------------
 newsletter_col = "Iscrizione alla Newsletter e Autorizzazioni di Marketing"
-out["Accepts Email Marketing"] = df[newsletter_col].apply(
+newsletter_source = get_column_or_default(df, newsletter_col, "")
+out["Accepts Email Marketing"] = newsletter_source.apply(
     lambda v: "TRUE" if (not pd.isna(v) and str(v).strip() != "") else "FALSE"
 )
 
