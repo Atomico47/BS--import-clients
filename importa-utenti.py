@@ -3,7 +3,7 @@ import pandas as pd
 INPUT_FILE = "clienti-origine-ita.csv"
 OUTPUT_FILE = "clienti_shopify-ita.csv"
 
-df = pd.read_csv(INPUT_FILE)
+df = pd.read_csv(INPUT_FILE, dtype=str, keep_default_na=False)
 
 out = pd.DataFrame()
 
@@ -46,6 +46,23 @@ def clean_phone(p):
     p = str(p).strip()
     return "" if p.lower() == "nan" else p
 
+def choose_country_series(dataframe):
+    """
+    Usa prima la colonna CC (presente nel tracciato fornito),
+    altrimenti fallback su Country.
+    Se nessuna colonna esiste, ritorna una serie vuota (gestita poi come IT).
+    """
+    if "CC" in dataframe.columns:
+        return dataframe["CC"]
+    if "Country" in dataframe.columns:
+        return dataframe["Country"]
+    return pd.Series([""] * len(dataframe), index=dataframe.index, dtype="string")
+
+def get_column_or_default(dataframe, column_name, default_value=""):
+    if column_name in dataframe.columns:
+        return dataframe[column_name]
+    return pd.Series([default_value] * len(dataframe), index=dataframe.index, dtype="string")
+
 # -----------------------------
 # MAPPING BASE
 # -----------------------------
@@ -61,12 +78,17 @@ out["Phone"] = df["Telefono Cellulare"].apply(clean_phone)
 # -----------------------------
 # EMAIL MARKETING
 # -----------------------------
-out["Accepts Email Marketing"] = "yes"
+newsletter_col = "Iscrizione alla Newsletter e Autorizzazioni di Marketing"
+newsletter_source = get_column_or_default(df, newsletter_col, "")
+out["Accepts Email Marketing"] = newsletter_source.apply(
+    lambda v: "TRUE" if (not pd.isna(v) and str(v).strip() != "") else "FALSE"
+)
 
 # -----------------------------
 # COUNTRY
 # -----------------------------
-out["Default Address Country Code"] = df["Country"].apply(normalize_country)
+country_source = choose_country_series(df)
+out["Default Address Country Code"] = country_source.apply(normalize_country)
 
 # -----------------------------
 # TAG ITA / ENG
