@@ -1,5 +1,6 @@
 import pandas as pd
 import argparse
+from pathlib import Path
 
 INPUT_FILE = "clienti-origine-ita.csv"
 OUTPUT_FILE = "clienti_shopify-ita.csv"
@@ -83,6 +84,19 @@ def parse_args():
 
 def main():
     args = parse_args()
+    input_path = Path(args.input)
+    if input_path.suffix.lower() != ".csv":
+        raise SystemExit(
+            f"❌ File input non valido: {args.input}\n"
+            "Usa un file .csv, ad esempio:\n"
+            "python importa-utenti.py -i clienti-origine-ita.csv -o clienti_shopify-ita.csv"
+        )
+    if not input_path.exists():
+        raise SystemExit(
+            f"❌ File non trovato: {args.input}\n"
+            "Verifica il percorso o usa -i con il file CSV corretto."
+        )
+
     df = pd.read_csv(args.input, dtype=str, keep_default_na=False)
     out = build_shopify_dataframe(df)
     out.to_csv(args.output, index=False)
